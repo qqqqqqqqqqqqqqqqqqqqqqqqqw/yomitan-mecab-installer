@@ -18,6 +18,7 @@
 
 from __future__ import print_function
 
+import csv
 import json
 import sys
 import os
@@ -84,6 +85,20 @@ class Mecab:
         'unidic-csj-202302': [
             'pos1', 'pos2', 'pos3', 'pos4', 'inflection_type', 'inflection_form',
             'lemma_reading', 'lemma', 'expression', 'reading', 'expression_base', 'reading_base'
+        ],
+        # Full UniDic build (29 feature columns). Unlike the trimmed
+        # unidic-mecab-translate build, this emits the kana surface form
+        # (仮名形出現形, col 21) which preserves written orthography (rendaku づ/ぢ,
+        # long vowels おお, etc.). `reading` is sourced from that column rather
+        # than from `pron` (発音形出現形, col 10), which is lossy. Column layout
+        # verified against the shipped unidic-csj-202512 build; UniDic column
+        # counts/order can shift between versions, so re-count for other builds.
+        'unidic-csj-202512': [
+            'pos1', 'pos2', 'pos3', 'pos4', 'inflection_type', 'inflection_form',
+            'lemma_reading', 'lemma', 'expression', 'pron', 'expression_base', 'pron_base',
+            'word_type', 'i_type', 'i_form', 'f_type', 'f_form', 'i_con_type', 'f_con_type', 'type',
+            'reading', 'reading_base', 'word_form', 'word_form_base',
+            'accent_type', 'accent_con_type', 'accent_mod_type', 'lid', 'lemma_id'
         ]
     }
     skip_patt = u'[\s\u30fb]'
@@ -159,9 +174,13 @@ class Mecab:
                     parsed_part = {}
                     try:
                         parsed_part['source'], output_part_info = output_part.split('\t', 1)
+                        # UniDic feature strings are CSV: some fields (e.g. the
+                        # accent connection type on the た auxiliary) are quoted
+                        # and contain internal commas, so a plain split(',') would
+                        # miscount columns. Parse as CSV to keep fields aligned.
                         output_part_info_parsed = [None if i == '*'
                                                    else re.sub(Mecab.skip_patt, '|', i)
-                                                   for i in output_part_info.split(',')]
+                                                   for i in next(csv.reader([output_part_info]))]
                         parsed_part.update(zip_longest(self.dictionary, output_part_info_parsed))
                         parsed_line.append(parsed_part)
                     except Exception as e:
