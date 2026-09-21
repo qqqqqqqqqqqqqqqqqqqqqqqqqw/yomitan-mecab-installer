@@ -383,7 +383,7 @@ class Mecab:
             if not reading:
                 continue
             fixed.extend(tokens[prev:start])
-            fixed.append(self._merge_tokens(tokens[start:end], reading + tail))
+            fixed.append(self._merge_tokens(tokens[start:end], reading + tail, n))
             prev = end
         return fixed + tokens[prev:]
 
@@ -419,15 +419,21 @@ class Mecab:
             num, ctr = join_readings(self._run([kanji])[0]), 'ニチ'
         return repair_counter_reading(num, ctr, n, counter)
 
-    def _merge_tokens(self, tokens, reading):
+    def _merge_tokens(self, tokens, reading, n):
         # The expression is the surface as written (２５人, not 二十五人), so
         # the reading goes over the digits.
         surface = ''.join(t['source'] for t in tokens)
         merged = self.gen_dummy_output(surface)
+        # Yomitan passes `lemma` on to its API clients. asbplayer colors a
+        # token by its lemma's learning status, and nothing has 2人 as a
+        # lemma, so use the kanji of the first non-zero digit (2人 -> 二,
+        # 16本 -> 一), which a learner knows. Before merging, Yomitan's own
+        # digit+counter tokens carried a digit lemma too.
+        leading_digit = next((d for d in str(n) if d != '0'), '0')
         merged.update({
             'pos1': '名詞', 'pos2': '数詞',
-            'expression': surface, 'expression_base': surface, 'lemma': surface,
-            'reading': reading, 'reading_base': reading, 'lemma_reading': reading,
+            'expression': surface, 'expression_base': surface, 'lemma': KANJI_DIGITS[int(leading_digit)],
+            'reading': reading, 'reading_base': reading,
             'pron': reading, 'pron_base': reading,
         })
         return merged
