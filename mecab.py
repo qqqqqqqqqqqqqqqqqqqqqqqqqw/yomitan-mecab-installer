@@ -429,10 +429,13 @@ class Mecab:
         # lemma, so use the kanji of the first non-zero digit (2人 -> 二,
         # 16本 -> 一), which a learner knows. Before merging, Yomitan's own
         # digit+counter tokens carried a digit lemma too.
-        leading_digit = next((d for d in str(n) if d != '0'), '0')
+        # Zero is 零, not 〇 (U+3007): that is a number, not a letter, in
+        # Unicode, and asbplayer drops lemmas without a letter.
+        leading_digit = next((int(d) for d in str(n) if d != '0'), 0)
         merged.update({
             'pos1': '名詞', 'pos2': '数詞',
-            'expression': surface, 'expression_base': surface, 'lemma': KANJI_DIGITS[int(leading_digit)],
+            'expression': surface, 'expression_base': surface,
+            'lemma': KANJI_DIGITS[leading_digit] if leading_digit else '零',
             'reading': reading, 'reading_base': reading,
             'pron': reading, 'pron_base': reading,
         })
