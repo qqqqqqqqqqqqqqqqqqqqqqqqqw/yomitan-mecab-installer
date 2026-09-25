@@ -100,6 +100,8 @@ LEXICAL_OK_POS = {('名詞', '普通名詞'), ('名詞', '数詞')}
 SPLIT_COUNTERS = {'日間': ('日', 'ニチ', 'カン')}
 NUMBER_SEPARATORS = {'.', '．', ',', '，'}
 RE_DIGITS = re.compile('^[0-9０-９]+$')
+RE_KANA = re.compile(u'^[\u3041-\u309f\u30a0-\u30ff\uff66-\uff9f]+$')
+RE_KANJI = re.compile(u'[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]')
 BIG_UNITS = {'十': 10, '百': 100, '千': 1000, '万': 10**4, '億': 10**8, '兆': 10**12}
 KANJI_DIGITS = '〇一二三四五六七八九'
 VOICELESS = set('カキクケコサシスセソタチツテトパピプペポ')
@@ -265,6 +267,7 @@ class Mecab:
         self.dictionary_name = dictionary_name
         self.dictionary = Mecab.dictionaries[dictionary_name]
         self.fix_counters = dictionary_name in COUNTER_FIX_DICTIONARIES
+        self.fix_kana_lemmas = 'lemma' in self.dictionary and 'expression_base' in self.dictionary
         args = [self.get_executable_path(), '-d', os.path.join(DIR, 'data', dictionary_name), '-r', os.path.join(DIR, 'mecabrc')]
         self.process = subprocess.Popen(
             args,
@@ -356,11 +359,26 @@ class Mecab:
                                                else re.sub(Mecab.skip_patt, '|', i)
                                                for i in next(csv.reader([output_part_info]))]
                     token.update(zip_longest(self.dictionary, output_part_info_parsed))
+                    if self.fix_kana_lemmas:
+                        self.fix_kana_lemma(token)
                     parsed_part.append(token)
                 except Exception as e:
                     print(e, file=sys.stderr)
             parsed_parts.append(parsed_part)
         return parsed_parts
+
+    def fix_kana_lemma(self, token):
+        """Fall back to the written base form when the lexeme is kana-only.
+
+        UniDic identifies proper-noun lexemes by reading, so a kanji token gets a
+        kana lemma (東京 トウキョウ, 根本 ネモト). API clients drop a lemma whose
+        script differs from the token's, which leaves those tokens with no usable
+        lemma at all, so use 書字形基本形, which keeps the spelling. Ordinary words
+        keep their lexeme: that is what groups orthographic variants (聴く -> 聞く).
+        """
+        lemma, expression_base = token['lemma'], token['expression_base']
+        if lemma and expression_base and RE_KANA.match(lemma) and RE_KANJI.search(expression_base):
+            token['lemma'] = expression_base
 
     def fix_counter_readings(self, tokens):
         """Merge each digit run + counter into one token with the right reading."""
